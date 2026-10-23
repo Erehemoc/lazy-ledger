@@ -1,0 +1,45 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pytest
+      - run: python -m pytest -q
+      - name: Smoke-test the pipeline without the model
+        run: |
+          python make_demo_data.py
+          python ledger.py demo/statement.csv --no-llm --out /tmp/report.md
+          cat /tmp/report.md
+
+  demo-gif:
+    # Renders demo/demo.gif from the committed real-run logs (demo/run*.log, demo/report.md).
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: sudo apt-get install -y fonts-dejavu-core && pip install pillow
+      - run: python make_demo_gif.py
+      - name: Commit the GIF if it changed
+        run: |
+          git add demo/demo.gif
+          if git diff --cached --quiet; then echo "GIF unchanged"; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Render demo GIF [skip ci]"
+          git push
